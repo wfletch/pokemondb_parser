@@ -5,7 +5,7 @@ import json
 import os
 import base64
 import requests
-import numpy
+import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 import urllib3
@@ -19,6 +19,8 @@ db_index = 'https://pokemondb.net/pokedex/national'
 pokedex_index = 'https://pokemondb.net/pokedex/'
 pokemon_data = {}
 
+# Helper Function blatently stolen (with love) from
+# https://stackoverflow.com/questions/50331463/convert-rgba-to-rgb-in-python
 def rgba2rgb( rgba, background=(255,255,255) ):
     row, col, ch = rgba.shape
 
@@ -27,10 +29,10 @@ def rgba2rgb( rgba, background=(255,255,255) ):
 
     assert ch == 4, 'RGBA image has 4 channels.'
 
-    rgb = numpy.zeros( (row, col, 3), dtype='float32' )
+    rgb = np.zeros( (row, col, 3), dtype='float32' )
     r, g, b, a = rgba[:,:,0], rgba[:,:,1], rgba[:,:,2], rgba[:,:,3]
 
-    a = numpy.asarray( a, dtype='float32' ) / 255.0
+    a = np.asarray( a, dtype='float32' ) / 255.0
 
     R, G, B = background
 
@@ -38,11 +40,13 @@ def rgba2rgb( rgba, background=(255,255,255) ):
     rgb[:,:,1] = g * a + (1.0 - a) * G
     rgb[:,:,2] = b * a + (1.0 - a) * B
 
-    return numpy.asarray( rgb, dtype='uint8' )
+    return np.asarray( rgb, dtype='uint8' )
 
 class PokemonScrapper():
     def scrape_pokemon_data(gen='all', deep=False):
-        #TODO: Pick Specific Generations
+        """scrape Pokemon data from pokemondb.net
+        gen='all' by default. Set Gen = GENNUM for specific generation only
+        deep='False' by default. Set deep = TRUE to get additional data about each pokemon"""
         html_doc = requests.get(db_index).text
         soup = BeautifulSoup(html_doc, 'html.parser')
         target_gen = gen
@@ -58,10 +62,13 @@ class PokemonScrapper():
                 number = pokemon_span[2].find_all('small')[0].get_text()
                 types = pokemon_span[2].find_all('small')[1].find_all('a')
                 types = [t.get_text() for t in types]
+                # Format Pokemon name
                 name = "-".join(name.split(" "))
                 name = name.lower()
                 name = name.replace("\'", '')
                 name = name.replace(".", '')
+
+                # Add Data about this Pokemon
                 pokemon_data[name] = {
                     "name": name,
                     "img_link" : src_link,
@@ -70,24 +77,27 @@ class PokemonScrapper():
                     "generation": current_gen
                 }
                 if deep:
+                    # TODO: Get Link To Individual Entry and get Large Photo
                     pass
                 current_gen +=1
-                # TODO: Get Link To Individual Entry and get Large Photo
             
     def save_object():
         # TODO: Allow the user to set directory she wants to save to
         json_string = json.dumps(pokemon_data)
         with open('output/output.json', 'w') as outfile:
             outfile.write(json_string)
+
     def save_images():
         pass
-    def get_pokemon_images():
+
+    def get_pokemon_images(save_to_object=True, download_to_disk=False):
         #TODO: Thread this? Or find a way to batch!
         #TODO: Set Custom Download Location
-        download_to_disk = False
         http = urllib3.PoolManager()
         for entry in pokemon_data.keys():
             link = pokemon_data[entry]['img_link']
+
+            # Bypass 403 by pretending to be a browser
             resp = http.request(
                 "GET",
                 link,
@@ -95,12 +105,12 @@ class PokemonScrapper():
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36"
                 }
             )
-            numpy.set_printoptions(threshold=numpy.inf)
-            img_array = numpy.array(bytearray(resp.data), dtype=numpy.uint8)
+            img_array = np.array(bytearray(resp.data), dtype=numpy.uint8)
             img = cv2.imdecode(img_array, -1)
             if download_to_disk:
                 cv2.imwrite("test_images/{}.png".format(entry), rgba2rgb(img))
-            pokemon_data[entry]['np_array'] = rgba2rgb(img).tolist()
+            if save_to_object:
+                pokemon_data[entry]['np_array'] = rgba2rgb(img).tolist()
 
     def get_pokemon_info():
         if pokemon_data == {}:
