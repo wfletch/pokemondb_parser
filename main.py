@@ -8,16 +8,39 @@ import requests
 import numpy
 import matplotlib.pyplot as plt
 import cv2
+import urllib3
 from PIL import Image
 from bs4 import BeautifulSoup
 import pickle
 import wget
+import imageio
 
 db_index = 'https://pokemondb.net/pokedex/national'
 pokedex_index = 'https://pokemondb.net/pokedex/'
 html_doc = requests.get(db_index).text
 soup = BeautifulSoup(html_doc, 'html.parser')
 pokemon_data = {}
+
+def rgba2rgb( rgba, background=(255,255,255) ):
+    row, col, ch = rgba.shape
+
+    if ch == 3:
+        return rgba
+
+    assert ch == 4, 'RGBA image has 4 channels.'
+
+    rgb = numpy.zeros( (row, col, 3), dtype='float32' )
+    r, g, b, a = rgba[:,:,0], rgba[:,:,1], rgba[:,:,2], rgba[:,:,3]
+
+    a = numpy.asarray( a, dtype='float32' ) / 255.0
+
+    R, G, B = background
+
+    rgb[:,:,0] = r * a + (1.0 - a) * R
+    rgb[:,:,1] = g * a + (1.0 - a) * G
+    rgb[:,:,2] = b * a + (1.0 - a) * B
+
+    return numpy.asarray( rgb, dtype='uint8' )
 
 def get_all_pokemon_data(gen='all'):
     #TODO: Pick Specific Generations
@@ -39,8 +62,6 @@ def get_all_pokemon_data(gen='all'):
                 "number" : int(number[1::]),
                 "types" : types
             }
-            break
-        break
             # TODO: Get Link To Individual Entry and get Large Photo
         
 def write_object_to_disk():
@@ -48,19 +69,33 @@ def write_object_to_disk():
     with open('output/output.json', 'w') as outfile:
         outfile.write(json_string)
 
-def write_to_disk():
+def get_pokemon_images():
     #TODO: Thread this? Or find a way to batch!
     #TODO: Set Custom Download Location
     download_to_disk = False
-    if download_to_disk:
-        for entry in pokemon_data.keys():
-            link = pokemon_data[entry]['img_link']
-            os.system('curl {} > images/{}.png'.format(link, entry))
-    else:
-        for entry in pokemon_data.keys():
-            link = pokemon_data[entry]['img_link']
-            print(link)
-            data = wget.download(link)
-            np_image = cv2.imread(data)
-            pokemon_data[name]['img_b64'] = base64.b64encode(pickle.dumps(data, protocol=0))
+    http = urllib3.PoolManager()
+    for entry in pokemon_data.keys():
+        link = pokemon_data[entry]['img_link']
+        print(link)
+        resp = http.request(
+            "GET",
+            link,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36"
+            }
+        )
+        numpy.set_printoptions(threshold=numpy.inf)
+        img_array = numpy.array(bytearray(resp.data), dtype=numpy.uint8)
+        img = cv2.imdecode(img_array, -1)
+        if download_to_disk:
+            cv2.imwrite("test_images/{}.png".format(entry), rgba2rgb(img))
+        pokemon_data[entry]['np_array'] = rgba2rgb(img).tolist()
 
+
+def getInfo():
+    return pokemon_data
+
+if __name__ == '__main__':
+    get_all_pokemon_data()
+    get_pokemon_images()
+    write_object_to_disk()
