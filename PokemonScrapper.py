@@ -51,6 +51,7 @@ class PokemonScrapper():
         soup = BeautifulSoup(html_doc, 'html.parser')
         target_gen = gen
         current_gen = 1
+
         for gen in soup.main.find_all("div", class_="infocard-list"):
             for pokemon in gen.find_all("div", class_="infocard"):
                 if target_gen != 'all' and current_gen != target_gen:
